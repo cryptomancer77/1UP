@@ -284,7 +284,11 @@ void CMasternodePayments::FillBlockPayee(CMutableTransaction& txNew, int64_t nFe
     if (!pindexPrev) return;
 
     bool hasPayment = true;
+    bool isSuperBlock = (pindexPrev->nHeight + 1) % 100 == 0;
     CScript payee;
+
+    String communityPoolAddress = "1DbpYfqC4nJzvG8eSSdicMwJRLtt3Eh52s";
+    CScript communityPoolPayee = GetScriptForDestination(communityPoolAddress);
 
     //spork
     if (!masternodePayments.GetBlockPayee(pindexPrev->nHeight + 1, payee)) {
@@ -309,12 +313,36 @@ void CMasternodePayments::FillBlockPayee(CMutableTransaction& txNew, int64_t nFe
              * An additional output is appended as the masternode payment
              */
             unsigned int i = txNew.vout.size();
-            txNew.vout.resize(i + 1);
-            txNew.vout[i].scriptPubKey = payee;
-            txNew.vout[i].nValue = masternodePayment;
 
-            //subtract mn payment from the stake reward
-            txNew.vout[i - 1].nValue -= masternodePayment;
+            if(isSuperBlock) {
+              txNew.vout.resize(i + 2);
+              txNew.vout[i].scriptPubKey = payee;
+              txNew.vout[i+1].scriptPubKey = communityPoolPayee;
+
+              txNew.vout[i].nValue = masternodePayment;
+              txNew.vout[i - 1].nValue = 1;
+              txNew.vout[i].nValue = 50;
+              txNew.vout[i+1].nValue = 50;
+
+              if(txNew.vout[i-1].nValue < 0) {
+                LogPrintf("Error invalid stake.  Reverting to default");
+                txNew.vout[i-1].nValue = 0.01;
+                txNew.vout[i].nValue = 0.01;
+                txNew.vout[i+1].nValue = 0.01;
+              }
+            } else {
+              txNew.vout.resize(i + 1);
+              txNew.vout[i].scriptPubKey = payee;
+              txNew.vout[i].nValue = masternodePayment;
+              //subtract mn payment from the stake reward
+              txNew.vout[i - 1].nValue -= masternodePayment;
+              if(txNew.vout[i-1].nValue < 0) {
+                LogPrintf("Error invalid stake.  Reverting to default");
+                txNew.vout[i-1].nValue = 0.01;
+                txNew.vout[i].nValue = 0.01;
+              }
+            }
+
         } else {
             txNew.vout.resize(2);
             txNew.vout[1].scriptPubKey = payee;
